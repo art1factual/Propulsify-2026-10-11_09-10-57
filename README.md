@@ -10,4 +10,4 @@ Can you stop the bomb-leading rogue drone?
 Built over a week through Hack Club's Terra Prep Week 3. 
 Utilizes Unity-Assets along with tutorials for help.
 
-Yet most of the work was completed by me!
+Yet the work was implemented and coded by Artifactual.
