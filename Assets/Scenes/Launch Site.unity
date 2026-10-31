@@ -1774,16 +1774,17 @@ MonoBehaviour:
   maxTiltAngle: 33
   angularDamping: 1
   landingHorizontalTolerance: 1.5
-  targetSpeed: 8
-  brakingDistance: 10
-  maxSpeed: 12
-  accelerationStrength: 25
+  targetSpeed: 10.63
+  brakingDistance: 15.36
+  maxSpeed: 8
+  accelerationStrength: 15
   landingSpeed: 1
   landingHeight: 2
   landingTolerance: 1
   thrustAngleTolerance: 15
   smoothedTargetAngle: 0
   initialized: 0
+  targetMoveThreshold: 1
 --- !u!65 &819637661
 BoxCollider:
   m_ObjectHideFlags: 0

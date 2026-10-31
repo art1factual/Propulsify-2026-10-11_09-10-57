@@ -95,7 +95,10 @@ public class Autonomy : MonoBehaviour
     void FixedUpdate()
     {
        if (hasLanded)
-       return;
+       {
+           if (propulsion != null) propulsion.ApplyThrust(0f);
+           return;
+       }
 
        if (navigation == null || propulsion == null || navigation.landingTarget == null)
         {
@@ -107,7 +110,7 @@ public class Autonomy : MonoBehaviour
 
         UpdateNavigation();
 
-        if (navigation.Path.Count == 0)
+        if (navigation.Path == null || navigation.Path.Count == 0)
         {
             currentTargetSpeed = 0f;
             initialized = false;
@@ -221,20 +224,20 @@ public class Autonomy : MonoBehaviour
         if (observedPathVersion != navigation.PathVersion)
         AdoptCurrentPath();
 
-        repathTimer += time.fixedDeltaTime;
+        repathTimer += Time.fixedDeltaTime;
 
         if (repathTimer < Mathf.Max(0.1f, pathRefreshInterval))
         return;
 
         repathTimer = 0f;
 
-        bool missingPath = navigation.Path.Count == 0;
+        bool missingPath = navigation.Path == null || navigation.Path.Count == 0;
 
         float threshold = Mathf.Max(0.01f, targetMoveThreshold);
 
         bool targetMove = (navigation.landingTarget.position - plannedTargetPosition).sqrMagnitude >= threshold * threshold;
 
-        if (!missingPath && !targetMoveThreshold && !RemainingRouteBlocked())
+        if (!missingPath && !targetMove && !RemainingRouteBlocked())
         return;
 
         navigation.RecalculatePath();
@@ -255,61 +258,58 @@ public class Autonomy : MonoBehaviour
 
     bool RemainingRouteBlocked()
     {
-        int index = Mathf.Clamp(
-            waypointIndex, 0, navigation.Path.Count - 1);
+        if (navigation.Path == null || navigation.Path.Count == 0)
+            return true;
 
-            // Connection from rocket towards the endpoint check
+        int index = Mathf.Clamp(waypointIndex, 0, navigation.Path.Count - 1);
+        if (!navigation.HasLineOfSight(transform.position, navigation.Path[index]))
+            return true;
 
-            
-            if (!navigation.HasLineOfSight(
-                transform.position, navigation.Path[index]))
-            {
-                return true;
-            }
-
-            for (int i = index; i < navigation.Path.Count - 1; i++)
+        for (int i = index; i < navigation.Path.Count - 1; i++)
         {
-            if (!navigation.HasLineOfSight(
-                navigation.Path[i], navigation.Path[i + 1]))
-            {
+            if (!navigation.HasLineOfSight(navigation.Path[i], navigation.Path[i + 1]))
                 return true;
-            }
         }
-
-        void AdvanceReachedWaypoints()
-        {
-            Clamp(waypointIndex, 0, navigation.Path.Count - 1);
-
-            float reachDistance = Mathf.Max(0.05f, waypointDistance);
-
-            while (waypointIndex < navigation.Path.Count - 1)
-            {
-                Vector3 offset = navigation.Path[waypointIndex] - transform.position;
-
-                offset.Z = 0f;
-
-                if (offset.sqrMagnitude > reachDistance * reachDistance)
-                break;
-
-                //Only if connection is clear may it advance further through the function
-                if (!navigation.HasLineOfSight(transform.position, navigation.Path[waypointIndex + 1]))
-                {
-                    break;
-                }
-                
-                waypointIndex++;
-                
-                smoothedTarget = navigation.Path[waypointIndex];
-                targetSmoothVelocity = Vector3.zero;
-                
-            }
-
-        }
-    
-
-    
+        return false;
     }
 
+    void AdvanceReachedWaypoints()
+    {
+        if (navigation.Path == null || navigation.Path.Count == 0)
+            return;
+
+        waypointIndex = Mathf.Clamp(waypointIndex, 0, navigation.Path.Count - 1);
+        float reachDistance = Mathf.Max(0.05f, waypointDistance);
+
+        while (waypointIndex < navigation.Path.Count - 1)
+        {
+            Vector3 offset = navigation.Path[waypointIndex] - transform.position;
+            offset.z = 0f;
+            if (offset.sqrMagnitude > reachDistance * reachDistance)
+                break;
+            if (!navigation.HasLineOfSight(transform.position, navigation.Path[waypointIndex + 1]))
+                break;
+
+            waypointIndex++;
+            smoothedTarget = navigation.Path[waypointIndex];
+            targetSmoothVelocity = Vector3.zero;
+        }
+    }
+
+    public void ResetFlight()
+    {
+        hasLanded = false;
+        landingMode = false;
+        initialized = false;
+        waypointIndex = 0;
+        observedPathVersion = -1;
+        repathTimer = Mathf.Max(0.1f, pathRefreshInterval);
+        currentTargetSpeed = 0f;
+        smoothedTarget = transform.position;
+        targetSmoothVelocity = Vector3.zero;
+        smoothedTargetAngle = transform.eulerAngles.z;
+        if (propulsion != null) propulsion.ApplyThrust(0f);
+    }
 
     bool AvoidObstacle()
     {
