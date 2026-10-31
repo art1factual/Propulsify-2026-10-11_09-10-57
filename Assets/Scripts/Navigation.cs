@@ -11,14 +11,18 @@ public class Navigation : MonoBehaviour
     public float cellSize = 2f;
     public float fixedz = 0f;
 
-    public LayerMask obstactleMask;
+    public LayerMask obstacleMask = 1 << 6;
     public float obstacleClearance = 1.5f;
 
     [Header("Debug")]
     public bool showPath = true;
     public List<Vector3> Path { get; private set; } = new List<Vector3>();
 
-    
+    public int PathVersion
+    {
+        get; 
+        private set;
+    }
     class Node
     {
         public int x, y;
@@ -42,6 +46,7 @@ public class Navigation : MonoBehaviour
     int width, height;
 
 
+
  
     void Start()
     {
@@ -56,6 +61,8 @@ public class Navigation : MonoBehaviour
 
         if(!FindPath(transform.position, landingTarget.position))
         {
+
+            
             Debug.LogWarning("Empty Path.", this);
             
         }
@@ -95,7 +102,7 @@ public class Navigation : MonoBehaviour
             for (int y = 0; y < height; y++)
             {
                 Vector3 point = GridToWorld(x, y);
-                blocked[x, y] = Physics.CheckSphere(point, obstacleClearance, obstactleMask, QueryTriggerInteraction.Ignore);
+                blocked[x, y] = Physics.CheckSphere(point, obstacleClearance, obstacleMask, QueryTriggerInteraction.Ignore);
             }
         }
     
@@ -122,6 +129,8 @@ public class Navigation : MonoBehaviour
 
     bool FindPath(Vector3 start, Vector3 goal)
     {
+        Path.Clear();
+        PathVersion++;
         Vector2Int s = WorldToGrid(start);
         Vector2Int t = WorldToGrid(goal);
 
@@ -189,6 +198,12 @@ public class Navigation : MonoBehaviour
                 if(closed.Contains(key))
                 continue;
 
+                Vector3 currentPosition = GridToWorld(current.x, current.y);
+                Vector3 neighborPosition = GridToWorld(nx, ny);
+
+                if (!HasLineOfSight(currentPosition, neighborPosition))
+                continue;
+
                 float stepCost = dx[i] != 0 && dy[i] != 0 ? 1.4142f : 1f;
 
                 float newG = current.g + stepCost;
@@ -246,7 +261,7 @@ public class Navigation : MonoBehaviour
         int current = 0;
         simplifiedPath.Add(originalPath[current]);
 
-        while (current < originalPath.Count - 1);
+        while (current < originalPath.Count - 1)
         {
             int furthest = originalPath.Count - 1;
 
@@ -263,27 +278,30 @@ public class Navigation : MonoBehaviour
         Path.AddRange(simplifiedPath);
     }
 
-    bool HasLineOfSight(Vector3 start, Vector3 end)
+    public bool HasLineOfSight(Vector3 start, Vector3 end)
     {
-        float distance = Vector3.Distance(start, end);
-
-        int steps = Mathf.Max(1, Mathf.CeilToInt(distance / (cellSize * 0.25f)));
-
-        for (int i = 0; i <= steps; i++)
+       if (Physics.CheckSphere(start, obstacleClearance, obstacleMask, QueryTriggerInteraction.Ignore))
         {
-            float t = (float)i / steps;
-            Vector3 point = Vector3.Lerp(start, end, t);
-
-            Vector2Int cell = WorldToGrid(point);
-
-            if (!Inside(cell.x, cell.y))
-            return false;
-
-            if (blocked[cell.x, cell.y])
             return false;
         }
-        return true;
+
+        if (Physics.CheckSphere(end, obstacleClearance, obstacleMask, QueryTriggerInteraction.Ignore))
+    {
+        return false;
     }
+        
+        Vector3 direction = end - start;
+        float distance = direction.magnitude;
+
+        if (distance <= 0.001f)
+        return true;
+
+        return !Physics.SphereCast(start, obstacleClearance, direction / distance, out _, distance, obstacleMask, QueryTriggerInteraction.Ignore);
+
+        
+    }
+
+    
 
     void OnDrawGizmos()
     {

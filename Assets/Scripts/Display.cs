@@ -10,6 +10,7 @@ public class Display : MonoBehaviour
     public TMP_Text altitudalText;
 
 
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {

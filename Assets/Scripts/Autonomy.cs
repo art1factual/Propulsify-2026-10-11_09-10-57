@@ -1,4 +1,4 @@
-using System.Collections;
+
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -6,6 +6,18 @@ using UnityEngine;
 public class Autonomy : MonoBehaviour
 {
 
+
+    [Header("Collision Avoidance")]
+    public LayerMask obstacleMask = 1 << 6;
+    public float avoidanceDetectionDistance = 6f;
+    public float avoidanceDetectionRadius = 1f;
+    public float avoidanceSideDistance = 3f;
+    
+    public float avoidanceStrengthMultiplier = 2f;
+
+    public float avoidanceUpwardForce = 2f;
+    
+    
     public Navigation navigation;
     public Propulsion propulsion;
 
@@ -55,6 +67,13 @@ public class Autonomy : MonoBehaviour
 
     private float currentTargetSpeed;
 
+
+    [Header("Replanning")]
+    [Min(0.01f)]
+    public float targetMoveThreshold = 1f;
+
+    private int observedPathVersion = -1;
+    private Vector3 plannedTargetPosition;
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -78,50 +97,28 @@ public class Autonomy : MonoBehaviour
        if (hasLanded)
        return;
 
-      
-       if (navigation == null || propulsion == null || navigation.landingTarget == null) return;
-       
-       if (navigation.Path == null || navigation.Path.Count == 0)
+       if (navigation == null || propulsion == null || navigation.landingTarget == null)
         {
+            if (propulsion != null)
             propulsion.ApplyThrust(0f);
+
             return;
         }
-       repathTimer += Time.fixedDeltaTime;
 
-       if (repathTimer >= pathRefreshInterval)
+        UpdateNavigation();
+
+        if (navigation.Path.Count == 0)
         {
-            repathTimer = 0f;
+            currentTargetSpeed = 0f;
+            initialized = false;
+            propulsion.ApplyThrust(0f);
+            return;
 
-            Vector3 previousTarget = smoothedTarget;
-
-            navigation.RecalculatePath();
-
-            if(navigation.Path != null && navigation.Path.Count > 0)
-            {
-                float closestDistance = float.MaxValue;
-                int closestIndex = 0;
-
-                for (int i = 0; i < navigation.Path.Count; i++)
-                {
-                    Vector3 offset = navigation.Path[i] - transform.position;
-                    offset.z = 0f;
-                
-                    float breakingDistance = offset.sqrMagnitude;
-                
-                    if(brakingDistance < closestDistance)
-                        {
-                            closestDistance = brakingDistance;
-                            closestIndex = i;
-                        }
-                }
-                waypointIndex = closestIndex;
-
-                smoothedTarget = previousTarget;
-            }
         }
-       
-       if(navigation == null || propulsion == null || navigation.landingTarget == null || navigation.Path == null || navigation.Path.Count == 0) return;
+        
+        AdvanceReachedWaypoints();
 
+        
         Vector3 landingPosition = navigation.landingTarget.position;
 
         float horizontalDistance = Mathf.Abs(transform.position.x - landingPosition.x);
@@ -148,14 +145,7 @@ public class Autonomy : MonoBehaviour
         Vector3 direction = smoothedTarget - transform.position;
         direction.z = 0f;
 
-        while (direction.magnitude < waypointDistance && waypointIndex < navigation.Path.Count - 1)
-        {
-            waypointIndex++;
-            target = navigation.Path[waypointIndex];
-            direction = target - transform.position;
-            direction.z = 0f;
-
-        }
+        
 
        
        Vector2 desiredDirection;
@@ -218,7 +208,154 @@ public class Autonomy : MonoBehaviour
         {
             propulsion.ApplyThrust(throttle);
         }
+        else
+        {
+            propulsion.ApplyThrust(0f);
+        }
     
     
     }
+
+    void UpdateNavigation()
+    {
+        if (observedPathVersion != navigation.PathVersion)
+        AdoptCurrentPath();
+
+        repathTimer += time.fixedDeltaTime;
+
+        if (repathTimer < Mathf.Max(0.1f, pathRefreshInterval))
+        return;
+
+        repathTimer = 0f;
+
+        bool missingPath = navigation.Path.Count == 0;
+
+        float threshold = Mathf.Max(0.01f, targetMoveThreshold);
+
+        bool targetMove = (navigation.landingTarget.position - plannedTargetPosition).sqrMagnitude >= threshold * threshold;
+
+        if (!missingPath && !targetMoveThreshold && !RemainingRouteBlocked())
+        return;
+
+        navigation.RecalculatePath();
+        AdoptCurrentPath();
+    }
+
+    void AdoptCurrentPath()
+    {
+        observedPathVersion = navigation.PathVersion;
+        plannedTargetPosition = navigation.landingTarget.position;
+
+        waypointIndex = 0;
+
+        targetSmoothVelocity = Vector3.zero;
+        initialized = false;
+
+    }
+
+    bool RemainingRouteBlocked()
+    {
+        int index = Mathf.Clamp(
+            waypointIndex, 0, navigation.Path.Count - 1);
+
+            // Connection from rocket towards the endpoint check
+
+            
+            if (!navigation.HasLineOfSight(
+                transform.position, navigation.Path[index]))
+            {
+                return true;
+            }
+
+            for (int i = index; i < navigation.Path.Count - 1; i++)
+        {
+            if (!navigation.HasLineOfSight(
+                navigation.Path[i], navigation.Path[i + 1]))
+            {
+                return true;
+            }
+        }
+
+        void AdvanceReachedWaypoints()
+        {
+            Clamp(waypointIndex, 0, navigation.Path.Count - 1);
+
+            float reachDistance = Mathf.Max(0.05f, waypointDistance);
+
+            while (waypointIndex < navigation.Path.Count - 1)
+            {
+                Vector3 offset = navigation.Path[waypointIndex] - transform.position;
+
+                offset.Z = 0f;
+
+                if (offset.sqrMagnitude > reachDistance * reachDistance)
+                break;
+
+                //Only if connection is clear may it advance further through the function
+                if (!navigation.HasLineOfSight(transform.position, navigation.Path[waypointIndex + 1]))
+                {
+                    break;
+                }
+                
+                waypointIndex++;
+                
+                smoothedTarget = navigation.Path[waypointIndex];
+                targetSmoothVelocity = Vector3.zero;
+                
+            }
+
+        }
+    
+
+    
+    }
+
+
+    bool AvoidObstacle()
+    {
+        Vector3 forward = transform.up;
+        Vector3 right = transform.right;
+
+        if (!Physics.SphereCast(transform.position, avoidanceDetectionRadius, forward, out RaycastHit hit, avoidanceDetectionDistance, obstacleMask))
+        {
+
+            return false;
+        }
+        
+        bool leftBlocked = Physics.SphereCast(transform.position, avoidanceDetectionRadius, -right, out RaycastHit leftHit, avoidanceSideDistance, obstacleMask);
+
+        bool rightBlocked = Physics.SphereCast(transform.position, avoidanceDetectionRadius, right, out RaycastHit rightHit, avoidanceSideDistance, obstacleMask);
+    
+        float direction;
+            
+        if(leftBlocked && !rightBlocked)
+        
+        direction = 1f;
+
+        else if (rightBlocked && !leftBlocked)
+        
+        direction = -1f;
+        
+        else
+
+        direction = Vector3.Dot(hit.normal, right)  > 0f ? -1f : 1f;
+        
+        float proximity = 1f - hit.distance / avoidanceDetectionDistance;
+        float avoidanceStrength = Mathf.SmoothStep(0.25f, 1f, proximity);
+        Vector3 avoidanceDirection = (right * direction + forward * 0.5f + Vector3.up * avoidanceUpwardForce).normalized;
+
+        Vector3 desiredDirection = (transform.up + avoidanceDirection * avoidanceStrength * 2f).normalized;
+
+        float correctionAngle = 
+        Vector2.SignedAngle(transform.up, desiredDirection);
+
+        float steering = correctionAngle * Mathf.Deg2Rad * steeringStrength * avoidanceStrengthMultiplier - rb.angularVelocity.z * angularDamping;
+        
+        rb.AddTorque(Vector3.forward * Mathf.Clamp(steering, -maxSteeringTorque, maxSteeringTorque), ForceMode.Acceleration);
+    
+        return true;
+    }    
+
+
 }
+
