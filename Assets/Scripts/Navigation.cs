@@ -6,6 +6,8 @@ public class Navigation : MonoBehaviour
 {
 
     public Transform landingTarget;
+    // Assign the moving drone if Navigation is on another GameObject.
+    public Transform pathStart;
 
     public Vector2 areaSize = new Vector2(100f, 60f);
     public float cellSize = 2f;
@@ -50,40 +52,30 @@ public class Navigation : MonoBehaviour
  
     void Start()
     {
-        if (landingTarget == null)
-        {
-            Debug.LogError("Landing Target.", this);
-            enabled = false;
-            return;
-        }
-
-        BuildGrid();
-
-        if(!FindPath(transform.position, landingTarget.position))
-        {
-
-            
-            Debug.LogWarning("Empty Path.", this);
-            
-        }
+        RecalculatePath();
     }
 
     public void RecalculatePath()
     {
-        if(landingTarget == null)
-        return;
-
         Path.Clear();
-
-        BuildGrid();
-
-        if (!FindPath(transform.position, landingTarget.position))
+        if (landingTarget == null)
         {
-            Debug.LogWarning("No Valid path was found", this);
+            PathVersion++;
+            Debug.LogWarning("Assign Landing Target.", this);
+            return;
         }
+        if (cellSize < 0.05f || areaSize.x <= 0f || areaSize.y <= 0f)
+        {
+            PathVersion++;
+            Debug.LogWarning("Use positive area dimensions and cellSize >= 0.05.", this);
+            return;
+        }
+        Physics.SyncTransforms();
+        Vector3 start = pathStart != null ? pathStart.position : transform.position;
+        BuildGrid();
+        if (!FindPath(start, landingTarget.position))
+            Debug.LogWarning("No valid path found. Check clearance, layers and endpoints.", this);
     }
-
-
 
     void BuildGrid()
     {
@@ -92,7 +84,8 @@ public class Navigation : MonoBehaviour
 
         if (!originInitialized)
         {
-            origin = new Vector3(transform.position.x - areaSize.x / 2f, transform.position.y - areaSize.y / 2f, fixedz);
+            Vector3 center = pathStart != null ? pathStart.position : transform.position;
+            origin = new Vector3(center.x - areaSize.x / 2f, center.y - areaSize.y / 2f, fixedz);
             originInitialized = true;
         }
         blocked = new bool[width, height];
@@ -173,8 +166,7 @@ public class Navigation : MonoBehaviour
 
             if (current.x == t.x && current.y == t.y)
             {
-                ReconstructPath(current);
-                return true;
+                return ReconstructPath(current, start, goal);
             }
 
             closed.Add(currentKey);
@@ -236,19 +228,27 @@ public class Navigation : MonoBehaviour
         );
     }
 
-    void ReconstructPath (Node node)
+    bool ReconstructPath(Node node, Vector3 start, Vector3 goal)
     {
         Path.Clear();
-         
         while (node != null)
         {
             Path.Add(GridToWorld(node.x, node.y));
             node = node.parent;
         }
         Path.Reverse();
+        if (Path.Count == 0) return false;
+        if (!HasLineOfSight(start, Path[0]) || !HasLineOfSight(Path[Path.Count - 1], goal))
+        {
+            Path.Clear();
+            Debug.LogWarning("Drone or target cannot safely connect to its grid cell. Try smaller cells or reposition the endpoint.", this);
+            return false;
+        }
+        Path.Insert(0, start);
+        Path.Add(goal);
         SimplifyPath();
-        
-    }  
+        return true;
+    }
 
     void SimplifyPath()
     {

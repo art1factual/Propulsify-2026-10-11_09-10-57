@@ -1698,7 +1698,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fa66e05ccdc5f034c8bf097e95b90a5d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Propulsion
-  thrustForce: 50
+  thrustForce: 25
   rotationSpeed: 180
   Thrust: {fileID: 823557504}
   thrustDirection: {x: 0, y: 0}
@@ -1736,6 +1736,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Navigation
   landingTarget: {fileID: 1272226198}
+  pathStart: {fileID: 0}
   areaSize: {x: 1000, y: 2000}
   cellSize: 2
   fixedz: 0
@@ -1776,15 +1777,15 @@ MonoBehaviour:
   landingHorizontalTolerance: 1.5
   targetSpeed: 10.63
   brakingDistance: 15.36
-  maxSpeed: 8
-  accelerationStrength: 15
+  maxSpeed: 15
+  accelerationStrength: 25
   landingSpeed: 1
   landingHeight: 2
   landingTolerance: 1
   thrustAngleTolerance: 15
   smoothedTargetAngle: 0
   initialized: 0
-  targetMoveThreshold: 1
+  targetMoveThreshold: 3
 --- !u!65 &819637661
 BoxCollider:
   m_ObjectHideFlags: 0
